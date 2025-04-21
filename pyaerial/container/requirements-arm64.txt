@@ -1,0 +1,7 @@
+clickhouse-connect==0.7.12
+jupyter==1.0.0
+ml-dtypes==0.2.0
+onnx==1.16.1
+sshtunnel==0.4.0
+tqdm==4.66.4
+typing-extensions==4.12.0
