@@ -39,7 +39,7 @@ class MyPilotPattern(PilotPattern):
                  precision=None):
         super(PilotPattern, self).__init__(precision=precision)
         self._pilots = tf.Variable(pilots, dtype=self.cdtype)
-        self._mask = tf.Variable(mask, dtype=tf.int32)
+        self._mask = tf.cast(mask, tf.int32)
         self.normalize = normalize
         self._check_settings()
 
@@ -62,22 +62,9 @@ class MyPilotPattern(PilotPattern):
 
     @pilots.setter
     def pilots(self, v):
-        self._pilots.assign(self._cast_or_check_precision(v))
-
-    @property
-    def mask(self):
-        # pylint: disable=line-too-long
-        """
-        [num_tx, num_streams_per_tx, num_ofdm_symbols, num_effective_subcarriers], `bool` : Mask of the pilot pattern
-        """
-        return self._mask
-    
-    @mask.setter
-    def mask(self, v):
-        if not isinstance(v, tf.Tensor):
-            v = tf.convert_to_tensor(v)
-        v = tf.cast(v, tf.int32)
-        self.mask.assign(v)
+        v = self._cast_or_check_precision(v)
+        if len(v.shape) == 2: v = v[None] 
+        self._pilots.assign(v)
     
     
 class MyPUSCHPilotPattern(MyPilotPattern):

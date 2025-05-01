@@ -209,23 +209,9 @@ class MyPUSCHConfig(PUSCHConfig):
         return a
     
     @property
-    def _pilot_patterns(self):
-        num_streams_per_tx = self.num_layers
+    def _pilot_sequence(self):
         dmrs_grid = self.dmrs_grid
-        num_subcarriers = dmrs_grid[0].shape[0]
-        num_ofdm_symbols = self.l_d
-        mask = np.zeros([num_streams_per_tx,
-                         num_ofdm_symbols,
-                         num_subcarriers], bool)
-        num_pilots = np.sum(self.dmrs_mask)
-        pilots = np.zeros([num_streams_per_tx, num_pilots], complex)
-        for j in range(num_streams_per_tx):
-            ind0, ind1 = self.symbol_allocation
-            mask[j] = np.transpose(self.dmrs_mask[:, ind0:ind0+ind1])
-            dmrs_grid = np.transpose(
-                            self.dmrs_grid[j, :, ind0:ind0+ind1])
-            pilots[j] = dmrs_grid[np.where(mask[j])]
-        return mask, pilots
+        return dmrs_grid[np.where(np.broadcast_to(self.dmrs_mask, dmrs_grid.shape))]
     
     @property
     def _scb_c_init(self):
