@@ -2,23 +2,21 @@ from .my_pusch_config import MyPUSCHConfig
 from .my_encoder import MyTBEncoder
 from .my_decoder import MyTBDecoder
 from .my_pusch_pilot_pattern import MyPUSCHPilotPattern
+from .my_timer import tic, toc
 
 from sionna.phy.mapping import BinarySource, Mapper
 from sionna.phy.nr import LayerMapper, LayerDemapper, PUSCHLSChannelEstimator
 from sionna.phy.ofdm import ResourceGrid, ResourceGridMapper, LinearDetector
 from sionna.phy.nr.utils import generate_prng_seq
-from sionna.phy.channel import AWGN, OFDMChannel
+from sionna.phy.channel import AWGN, OFDMChannel, gen_single_sector_topology as gen_topology
 from sionna.phy.mimo import StreamManagement
-# from sionna.phy.channel.tr38901 import Antenna, AntennaArray
-from sionna.phy.channel import RayleighBlockFading
+from sionna.phy.channel.tr38901 import Antenna, AntennaArray, UMi
+# from sionna.phy.channel import RayleighBlockFading
 from sionna.phy import Block
-from sionna.phy.utils import flatten_last_dims, flatten_dims, split_dim
-
 
 import tensorflow as tf
 import numpy as np
 import copy
-
 
 NUM_TX = NUM_RX = 1
 NUM_STREAMS_PER_TX = 1
@@ -84,36 +82,33 @@ class MySimulator(Block):
         self._rg_shape = self.rgMapper._rg_type.shape
 
         self.awgn = AWGN()
+        self._snr = tf.Variable(snr, self.rdtype)
+
         if channel:
             self.channel = channel
         else:
-            # carrier_frequency = pusch_config._my_config.Carrier_frequency
-            # Ue_Antenna = Antenna(polarization="single",
-            #     polarization_type="V",
-            #     antenna_pattern="38.901",
-            #     carrier_frequency=carrier_frequency)
+            carrier_frequency = pusch_config._my_config.Carrier_frequency
+            Ue_Antenna = Antenna(polarization="single",
+                polarization_type="V",
+                antenna_pattern="38.901",
+                carrier_frequency=carrier_frequency)
 
-            # Gnb_AntennaArray = AntennaArray(num_rows=pusch_config._my_config.Sys.NRxAnt//2,
-            #                         num_cols=1,
-            #                         polarization="dual",
-            #                         polarization_type="cross",
-            #                         antenna_pattern="38.901",
-            #                         carrier_frequency=carrier_frequency)
+            Gnb_AntennaArray = AntennaArray(num_rows=pusch_config._my_config.Sys.NRxAnt//2,
+                                    num_cols=1,
+                                    polarization="dual",
+                                    polarization_type="cross",
+                                    antenna_pattern="38.901",
+                                    carrier_frequency=carrier_frequency)
+            channel_model = UMi(carrier_frequency = carrier_frequency,
+                                        o2i_model = "high",
+                                        ut_array = Ue_Antenna,
+                                        bs_array = Gnb_AntennaArray,
+                                        direction = "uplink",
+                                        enable_pathloss = True,
+                                        enable_shadow_fading = True)
             
-            # channel_model = CDL(model='C',
-            #                     delay_spread=150*1e-9,
-            #                     carrier_frequency=carrier_frequency,
-            #                     ut_array=Ue_Antenna,
-            #                     bs_array=Gnb_AntennaArray,
-            #                     direction="uplink",
-            #                     min_speed=1,
-            #                     max_speed=1)
+            channel_model.set_topology(*gen_topology(1, 1, "umi"))
 
-            channel_model = RayleighBlockFading(NUM_RX,
-                                                pusch_config._my_config.Sys.NRxAnt,
-                                                NUM_TX,
-                                                pusch_config._my_config.Sys.NTxAnt)
-            
             self.channel = OFDMChannel(channel_model=channel_model, resource_grid=resource_grid,
                                     add_awgn=False, normalize_channel=True, return_channel=True)
         
@@ -151,24 +146,53 @@ class MySimulator(Block):
                     (*self._rg_shape,self._num_bits_per_symbol,c_shape[0]))
         return tf.transpose(c_rg,perm=[5,0,1,2,3,4])
 
-    def update(self, *, rnti=None, slot_num=None, pci=None, rb_start=None):
+    def update(self, *, rnti=None, slot_num=None, pci=None, rb_start=None, verbose=False):
         # Check that at least one parameter is not None
-        assert not all([rnti, slot_num, pci, rb_start]) == None, "At least one parameter must be provided"
+        # assert not all([rnti, slot_num, pci, rb_start]) == None, "At least one parameter must be provided"
+        tic()
         pusch_config = self.pusch_config
-        # Update PUSCH configuration based on provided parameters
-        if rnti:
+        toc("assign pusch config")
+
+        tic()
+        cur_rnti = pusch_config.n_rnti
+        cur_slot_num = pusch_config.carrier.slot_number
+        cur_pci = pusch_config.phy_cell_id
+        cur_rb_start = pusch_config.first_resource_block
+        toc("store current pusch config")
+        # # Update PUSCH configuration based on provided parameters
+
+        tic()
+        if rnti is not None:
             pusch_config.n_rnti = rnti
-        if slot_num:
+        if slot_num is not None:
             pusch_config.carrier.slot_number = slot_num
-        if pci:
+        if pci is not None:
             pusch_config.phy_cell_id = pci
-        if rb_start:
+        if rb_start is not None:
             pusch_config.first_resource_block = rb_start
+        toc("update new pusch config")
+        
+        if verbose == True:
+            tf.print("\nUpdating parameters:")
+            tf.print(f" - RNTI: {cur_rnti} -> {pusch_config.n_rnti}")
+            tf.print(f" - Slot number: {cur_slot_num} -> {pusch_config.carrier.slot_number}")
+            tf.print(f" - PCI: {cur_pci} -> {pusch_config.phy_cell_id}")
+            tf.print(f" - RB start: {cur_rb_start} -> {pusch_config.first_resource_block}")
         
         if rnti or pci:
-            self.tbEnc.scrambler.c_init = pusch_config._scb_c_init
-        if slot_num or rb_start or pci :
-            self._pilot_pattern.pilots = pusch_config._pilot_sequence
+            tic()
+            c_init = pusch_config._scb_c_init
+            toc("calculate c_init")
+            tic()
+            self.tbEnc.scrambler.c_init = c_init
+            toc("update c_init")
+        if slot_num or rb_start or pci:
+            tic()
+            seq = pusch_config._pilot_sequence
+            toc("calculate pilot seq")
+            tic()
+            self._pilot_pattern.pilots = seq
+            toc("update pilot_sequence")
 
     @property
     def channel(self):
@@ -178,13 +202,34 @@ class MySimulator(Block):
     def channel(self, channel):
         self._channel = channel
     
+    def set_topology(self,
+                     batch_size,
+                     num_ut=1,
+                     scenario="umi",
+                     min_bs_ut_dist=None,
+                     isd=None,
+                     bs_height=None,
+                     min_ut_height=None,
+                     max_ut_height=None,
+                     indoor_probability=None,
+                     min_ut_velocity=None,
+                     max_ut_velocity=None
+                    ):
+        self.channel._cir_sampler.set_topology(*gen_topology(batch_size,
+                                                             num_ut, scenario,
+                                                             min_bs_ut_dist, isd, bs_height,
+                                                             min_ut_height, max_ut_height,
+                                                             indoor_probability,
+                                                             min_ut_velocity, max_ut_velocity))
+
     @property
     def snr(self):
         return self._snr
     
     @snr.setter
     def snr(self, snr):
-        self._snr = snr
+        snr = tf.convert_to_tensor(snr, dtype=self.rdtype)
+        self._snr.assign(snr)
 
     @tf.function(jit_compile=True)
     def call(self,
@@ -217,7 +262,7 @@ class MySimulator(Block):
         x = self.rgMapper(x_layer)
 
         y, h = self.channel(x)
-        no = tf.math.reduce_variance(y, axis=[-1,-2,-3,-4]) / self._snr
+        no = tf.math.reduce_variance(y, axis=[-1,-2,-3,-4]) / self.snr
         y = self.awgn(y, no)
 
         # Tạo output map chứa tất cả các biến có thể trả về

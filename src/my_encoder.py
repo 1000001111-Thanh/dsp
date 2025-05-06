@@ -11,6 +11,7 @@ from sionna.phy.nr.tb_encoder import TBEncoder
 from sionna.phy.fec.crc import CRCEncoder
 from sionna.phy.fec.scrambling import TB5GScrambler
 from sionna.phy.nr.utils import calculate_tb_size
+from .my_timer import tic, toc
 
 class MyLDPC5GEncoder(LDPC5GEncoder):
     # pylint: disable=line-too-long
@@ -350,10 +351,14 @@ class MyTB5GScrambler(TB5GScrambler):
     
     @c_init.setter
     def c_init(self, v):
+        tic()
         if not isinstance(v, (list, tuple)):
             v = [v]
         self._c_init = v
+        toc("assgin c_init with v")
+        tic()
         self.sequence = self._generate_scrambling(self._input_shape)
+        toc("generate_scrambling")
 
     @property
     def sequence(self):
@@ -605,6 +610,8 @@ class MyTBEncoder(TBEncoder):
                                             channel_type=channel_type,
                                             codeword_index=codeword_index,
                                             precision=precision)
+            input_shape = (None, len(self._n_rnti), np.sum(self._cw_lengths))
+            self._scrambler.build(input_shape)
         else: # required for TBDecoder
             self._scrambler = None
 

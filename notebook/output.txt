@@ -1,0 +1,84 @@
+Carrier Configuration
+=====================
+cyclic_prefix : normal
+cyclic_prefix_length : 2.3437500000000002e-06
+frame_duration : 0.01
+frame_number : 0
+kappa : 64.0
+mu : 1
+n_cell_id : 442
+n_size_grid : 162
+n_start_grid : 0
+num_slots_per_frame : 20
+num_slots_per_subframe : 2
+num_symbols_per_slot : 14
+slot_number : 4
+sub_frame_duration : 0.001
+subcarrier_spacing : 30
+t_c : 5.086263020833334e-10
+t_s : 3.2552083333333335e-08
+
+PUSCH Configuration
+===================
+dmrs_grid : shape (1, 276, 14)
+dmrs_grid_precoded : shape ()
+dmrs_mask : shape (276, 14)
+dmrs_symbol_indices : [3, 11]
+first_resource_block : 0
+first_subcarrier : 0
+frequency_hopping : neither
+l : [3, 11]
+l_0 : 3
+l_bar : [3, 11]
+l_d : 14
+l_prime : [0]
+l_ref : 0
+mapping_type : A
+n : shape (69,)
+n_rnti : 20002
+n_size_bwp : 162
+n_start_bwp : 0
+num_antenna_ports : 1
+num_coded_bits : 6624
+num_layers : 1
+num_ov : 0
+num_res_per_prb : 144
+num_resource_blocks : 23
+num_subcarriers : 276
+phy_cell_id : 442
+precoding : non-codebook
+precoding_matrix : None
+symbol_allocation : [0, 14]
+tb_size : 808
+tpmi : 0
+transform_precoding : False
+
+PUSCH DMRS Configuration
+========================
+additional_position : 1
+allowed_dmrs_ports : [0, 1, 2, 3]
+beta : 1.4142135623730951
+cdm_groups : [0]
+config_type : 1
+deltas : [0]
+dmrs_port_set : [0]
+length : 1
+n_id : [442, 442]
+n_scid : 0
+num_cdm_groups_without_data : 2
+type_a_position : 3
+w_f : [[1]
+ [1]]
+w_t : [[1]
+ [1]]
+
+Transport Block Configuration
+=============================
+channel_type : PUSCH
+mcs_index : 0
+mcs_table : 1
+n_id : 442
+num_bits_per_symbol : 2
+target_coderate : 0.1171875
+tb_scaling : 1.0
+

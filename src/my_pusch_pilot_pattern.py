@@ -63,7 +63,7 @@ class MyPilotPattern(PilotPattern):
     @pilots.setter
     def pilots(self, v):
         v = self._cast_or_check_precision(v)
-        if len(v.shape) == 2: v = v[None] 
+        if len(v.shape) < 3: v = tf.broadcast_to(v, self._pilots.shape) 
         self._pilots.assign(v)
     
     

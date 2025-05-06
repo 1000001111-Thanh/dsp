@@ -6,6 +6,7 @@
 """
 # pylint: disable=line-too-long
 
+import copy
 import numpy as np
 from sionna.phy.nr.utils import generate_prng_seq
 from sionna.phy.nr import PUSCHConfig, CarrierConfig, PUSCHDMRSConfig, TBConfig
@@ -47,7 +48,7 @@ class MyPUSCHConfig(PUSCHConfig):
                  **kwargs):
         super(PUSCHConfig, self).__init__(**kwargs)
         self._name = "PUSCH Configuration"
-        self._my_config = my_config
+        self._my_config = copy.deepcopy(my_config)
         if my_config:
             self.carrier=CarrierConfig(
                 n_cell_id=my_config.Sys.NCellId,
@@ -106,24 +107,18 @@ class MyPUSCHConfig(PUSCHConfig):
 
     @property
     def first_resource_block(self):
-        """
-        :class:`~sionna.phy.nr.CarrierConfig` : Carrier configuration
-        """
         return self._my_config.Ue.FirstPrb
+    
+    @first_resource_block.setter
+    def first_resource_block(self, v):
+        self._my_config.Ue.FirstPrb = v
 
     @property
     def first_subcarrier(self):
-        """
-        :class:`~sionna.phy.nr.CarrierConfig` : Carrier configuration
-        """
         return 12*self.first_resource_block
 
     @property
     def num_resource_blocks(self):
-        """
-        int, read-only : Number of allocated resource blocks for the
-            PUSCH transmissions.
-        """
         return self._my_config.Ue.NPrb
 
     @property
@@ -210,8 +205,9 @@ class MyPUSCHConfig(PUSCHConfig):
     
     @property
     def _pilot_sequence(self):
-        dmrs_grid = self.dmrs_grid
-        return dmrs_grid[np.where(np.broadcast_to(self.dmrs_mask, dmrs_grid.shape))]
+        dmrs_grid = self.dmrs_grid.swapaxes(-1,-2)
+        dmrs_mask = np.broadcast_to(self.dmrs_mask.T, dmrs_grid.shape)
+        return dmrs_grid[np.where(dmrs_mask)]
     
     @property
     def _scb_c_init(self):
