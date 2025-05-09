@@ -1,5 +1,6 @@
 # timer.py
 import time
+import tensorflow as tf
 
 class Timer:
     def __init__(self):
@@ -14,7 +15,7 @@ class Timer:
         if not self._start_stack:
             raise RuntimeError("No timer started. Call tic() first.")
         elapsed_time = time.time() - self._start_stack.pop()
-        print(f"Elapsed time {mask_as}: {elapsed_time:.4f} seconds")
+        tf.print(f"Elapsed time {mask_as}: {elapsed_time:.4f} seconds")
         return elapsed_time
 
 # Create a default instance for convenience

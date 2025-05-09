@@ -10,8 +10,11 @@ from sionna.phy.fec.ldpc import LDPC5GEncoder
 from sionna.phy.nr.tb_encoder import TBEncoder
 from sionna.phy.fec.crc import CRCEncoder
 from sionna.phy.fec.scrambling import TB5GScrambler
-from sionna.phy.nr.utils import calculate_tb_size
-from .my_timer import tic, toc
+
+from sionna.phy.nr.utils import calculate_tb_size, generate_prng_seq
+from sionna.phy.utils import expand_to_rank
+
+# from .my_timer import tic, toc
 
 class MyLDPC5GEncoder(LDPC5GEncoder):
     # pylint: disable=line-too-long
@@ -331,7 +334,32 @@ class MyTB5GScrambler(TB5GScrambler):
     #################
     # Utility methods
     #################
+    def _generate_scrambling(self, input_shape):
+        r"""Returns random sequence of `0`s and `1`s following
+        [3GPPTS38211_scr]_ ."""
+        # tic()
+        seq = generate_prng_seq_tf(input_shape[-1], self._c_init[0])
+        seq = tf.cast(seq, self.rdtype) # enable flexible dtypes
+        # toc("generate_prng_seq_tf")
 
+        # tic()
+        # seq = generate_prng_seq(input_shape[-1], self._c_init[0])
+        # seq = tf.constant(seq, self.rdtype) # enable flexible dtypes
+        # toc("generate_prng_seq_tf")
+        
+        seq = expand_to_rank(seq, len(input_shape), axis=0)
+
+        if self._multi_stream:
+            for c in self._c_init[1:]:
+                s = generate_prng_seq_tf(input_shape[-1], c)
+                s = tf.constant(s, self.rdtype) # enable flexible dtypes
+                # s = generate_prng_seq(input_shape[-1], self._c_init[0])
+                # s = tf.constant(seq, self.rdtype) # enable flexible dtypes
+                s = expand_to_rank(s, len(input_shape), axis=0)
+                seq = tf.concat([seq, s], axis=-2)
+
+        return seq
+    
     # pylint: disable=(unused-argument)
     def build(self, input_shape, **kwargs):
         """Initialize pseudo-random scrambling sequence."""
@@ -351,14 +379,14 @@ class MyTB5GScrambler(TB5GScrambler):
     
     @c_init.setter
     def c_init(self, v):
-        tic()
+        # tic()
         if not isinstance(v, (list, tuple)):
             v = [v]
         self._c_init = v
-        toc("assgin c_init with v")
-        tic()
+        # toc("assgin c_init with v")
+        # tic()
         self.sequence = self._generate_scrambling(self._input_shape)
-        toc("generate_scrambling")
+        # toc("generate_scrambling")
 
     @property
     def sequence(self):
@@ -670,3 +698,73 @@ class MyTBEncoder(TBEncoder):
         self._output_perm = tf.constant(perm_seq, tf.int32)
         self._output_perm_inv = tf.argsort(perm_seq, axis=-1)
 
+
+@tf.function(
+    input_signature=[
+        tf.TensorSpec([], tf.int32),
+        tf.TensorSpec([], tf.int32)
+    ],
+    jit_compile=True)
+def generate_prng_seq_tf(length, c_init):
+    n_seq = 31
+    n_c = 1600
+    total_len = length + n_c + n_seq
+
+    # Convert c_init to 31-bit tensor (LSB first)
+    c_init_bits = tf.bitwise.bitwise_and(
+        tf.bitwise.right_shift(c_init, tf.range(n_seq, dtype=tf.int32)),
+        1
+    )
+
+    # 1. Chuẩn bị mảng ban đầu
+    x1_init = tf.concat([
+        tf.constant([1], dtype=tf.int32),
+        tf.zeros(n_seq - 1, dtype=tf.int32),
+        tf.zeros(total_len - n_seq, dtype=tf.int32)
+    ], axis=0)
+
+    x2_init = tf.concat([
+        c_init_bits,
+        tf.zeros(total_len - n_seq, dtype=tf.int32)
+    ], axis=0)
+
+    # 2. Khởi tạo TensorArray bằng unstack
+    x1 = tf.TensorArray(dtype=tf.int32, size=total_len, clear_after_read=False)
+    x1 = x1.unstack(x1_init)
+
+    x2 = tf.TensorArray(dtype=tf.int32, size=total_len, clear_after_read=False)
+    x2 = x2.unstack(x2_init)
+
+    # Define the loop body
+    def body(idx, x1, x2):
+        # Cache các giá trị
+        x1_i = x1.read(idx)
+        x1_i3 = x1.read(idx + 3)
+        x1_val = tf.bitwise.bitwise_xor(x1_i, x1_i3)
+
+        x2_0 = x2.read(idx)
+        x2_1 = x2.read(idx + 1)
+        x2_2 = x2.read(idx + 2)
+        x2_3 = x2.read(idx + 3)
+        x2_val = tf.bitwise.bitwise_xor(
+            tf.bitwise.bitwise_xor(x2_0, x2_1),
+            tf.bitwise.bitwise_xor(x2_2, x2_3)
+        )
+
+        x1 = x1.write(idx + n_seq, x1_val)
+        x2 = x2.write(idx + n_seq, x2_val)
+        return idx + 1, x1, x2
+
+    # Run the loop
+    idx = 0
+    cond = lambda i, *_: i < (length + n_c)
+    idx, x1, x2 = tf.while_loop(cond, body, [idx, x1, x2])
+
+    c = tf.TensorArray(dtype=tf.int32, size=length)
+    for i in range(length):
+        x1_inc = x1.read(i + n_c)
+        x2_inc = x2.read(i + n_c)
+        val = tf.bitwise.bitwise_xor(x1_inc, x2_inc)
+        c = c.write(i, val)
+
+    return c.stack()

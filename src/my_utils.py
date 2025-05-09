@@ -1,84 +1,63 @@
-import tensorflow as tf
+# import tensorflow as tf
 
-def generate_prng_seq_tf(length, c_init):
-    r"""TensorFlow implementation of pseudo-random sequence generator as defined in Sec. 5.2.1
-    in [3GPP38211]_ based on a length-31 Gold sequence.
+# # @tf.function
+# # def c_init_tf(l, n_id, n_scid, slot_number, num_symbols_per_slot):
+# #     """TensorFlow version of c_init from 3GPP 38.211"""
+# #     lambda_bar = tf.constant(0, dtype=tf.float32)
 
-    Parameters
-    ----------
-    length: `int`
-        Desired output sequence length
+# #     term1 = tf.cast(2**17, tf.int32) * (
+# #         num_symbols_per_slot * slot_number + tf.cast(l, tf.int32) + 1
+# #     ) * (2 * n_id + 1)
+# #     term2 = tf.cast(2**17 * tf.math.floor(lambda_bar / 2), tf.int32)
+# #     term3 = 2 * n_id + n_scid
+# #     c_init = (term1 + term2 + term3) % (2**31)
+# #     return tf.cast(c_init, tf.int32)
 
-    c_init: `int`
-        Initialization sequence of the PRNG. Must be in the range of 0 to
-        :math:`2^{32}-1`.
+# @tf.function
+# def generate_dmrs_grid_tf(num_symbols_per_slot, slot_number,
+#                           n_id, n_scid,
+#                           dmrs_port_set, num_subcarriers, num_symbols,
+#                           first_subcarrier, l_bar, l_prime, n,
+#                           config_type, deltas, w_f, w_t,
+#                           l_ref, beta):
+#     num_ports = tf.shape(dmrs_port_set)[0]
+#     a_tilde = tf.TensorArray(tf.complex64, size=num_ports)
+#     for j in tf.range(num_ports):
+#         a_tilde = a_tilde.write(j, tf.zeros([num_subcarriers, num_symbols], dtype=tf.complex64))
 
-    Output
-    ------
-    : `tf.Tensor` of shape [length] and dtype tf.float32
-        Containing the scrambling sequence (0s and 1s)
-    """
-    # Validate inputs
-    length = tf.cast(length, tf.int32)
-    c_init = tf.cast(c_init, tf.int32)
-    
-    # tf.debugging.assert_non_negative(length, message="length must be a positive integer")
-    # tf.debugging.assert_less(c_init, 2**32, message="c_init must be in [0, 2^32-1]")
-    # tf.debugging.assert_greater_equal(c_init, 0, message="c_init must be in [0, 2^32-1]")
+#     for l_bar_val in l_bar:
+#         for l_prime_val in l_prime:
+#             l = l_bar_val + l_prime_val
+#             c_init = 2**17 * (num_symbols_per_slot * slot_number + l + 1) * (2 * n_id + 1) + 2 * n_id + n_scid
+#             c_init = tf.math.mod(c_init, 2**31)
 
-    # Internal parameters
-    n_seq = 31  # length of gold sequence
-    n_c = 1600  # defined in 5.2.1 in 38.211
-    total_length = length + n_c + n_seq
+#             if config_type == 1:
+#                 _skip = first_subcarrier
+#                 _len = num_subcarriers
+#             else:
+#                 _skip = 2 * first_subcarrier // 3
+#                 _len = 2 * num_subcarriers // 3
 
-    # Initialize sequences
-    x1 = tf.TensorArray(tf.float32, size=total_length, clear_after_read=False)
-    x2 = tf.TensorArray(tf.float32, size=total_length, clear_after_read=False)
+#             c = generate_prng_seq_tf(_skip + _len, c_init)[_skip:]
+#             r = (1 / tf.sqrt(2.0)) * (tf.cast(1 - 2 * c[::2], tf.complex64) +
+#                                       1j * tf.cast(1 - 2 * c[1::2], tf.complex64))
 
-    # Initialize x1 and x2
-    # x1[0] = 1, rest are 0
-    x1 = x1.write(0, 1.0)
-    
-    # Convert c_init to binary and pad to 31 bits
-    c_init_bin = tf.bitwise.right_shift(
-        tf.bitwise.bitwise_and(
-            tf.reverse(tf.range(n_seq, dtype=tf.int32), [1] * n_seq),
-            c_init), 
-        tf.range(n_seq, dtype=tf.int32))
-    c_init_bin = tf.cast(c_init_bin, tf.float32)
-    
-    # Initialize x2 with c_init_bin
-    for i in tf.range(n_seq):
-        x2 = x2.write(i, c_init_bin[i])
+#             for j_ind in tf.range(num_ports):
+#                 for n_val in n:
+#                     for k_prime in [0, 1]:
+#                         if config_type == 1:
+#                             k = 4 * n_val + 2 * k_prime + deltas[j_ind]
+#                         else:
+#                             k = 6 * n_val + k_prime + deltas[j_ind]
 
-    # Run the generator
-    def body(idx, x1, x2):
-        x1_val = tf.math.floormod(x1.read(idx + 3) + x1.read(idx), 2)
-        x1 = x1.write(idx + 31, x1_val)
-        
-        x2_val = tf.math.floormod(
-            x2.read(idx + 3) + x2.read(idx + 2) + x2.read(idx + 1) + x2.read(idx), 2)
-        x2 = x2.write(idx + 31, x2_val)
-        return idx + 1, x1, x2
+#                         value = r[2 * n_val + k_prime] * w_f[k_prime][j_ind] * w_t[l_prime_val][j_ind]
+#                         updated = tf.tensor_scatter_nd_update(
+#                             a_tilde.read(j_ind),
+#                             [[k, l_ref + l]],
+#                             [value]
+#                         )
+#                         a_tilde = a_tilde.write(j_ind, updated)
 
-    _, x1, x2 = tf.while_loop(
-        lambda idx, *_: idx < length + n_c,
-        body,
-        loop_vars=(0, x1, x2),
-        maximum_iterations=length + n_c)
+#     result = tf.stack([beta * a_tilde.read(i) for i in tf.range(num_ports)])
+#     return result
 
-    # Generate output sequence
-    c = tf.TensorArray(tf.float32, size=length)
-    
-    def output_body(idx, c_arr):
-        val = tf.math.floormod(x1.read(idx + n_c) + x2.read(idx + n_c), 2)
-        c_arr = c_arr.write(idx, val)
-        return idx + 1, c_arr
-
-    _, c = tf.while_loop(
-        lambda idx, *_: idx < length,
-        output_body,
-        loop_vars=(0, c),
-        maximum_iterations=length)
-
-    return c.stack()

@@ -149,19 +149,19 @@ class MySimulator(Block):
     def update(self, *, rnti=None, slot_num=None, pci=None, rb_start=None, verbose=False):
         # Check that at least one parameter is not None
         # assert not all([rnti, slot_num, pci, rb_start]) == None, "At least one parameter must be provided"
-        tic()
+        # tic()
         pusch_config = self.pusch_config
-        toc("assign pusch config")
+        # toc("assign pusch config")
 
-        tic()
+        # tic()
         cur_rnti = pusch_config.n_rnti
         cur_slot_num = pusch_config.carrier.slot_number
         cur_pci = pusch_config.phy_cell_id
         cur_rb_start = pusch_config.first_resource_block
-        toc("store current pusch config")
+        # toc("store current pusch config")
         # # Update PUSCH configuration based on provided parameters
 
-        tic()
+        # tic()
         if rnti is not None:
             pusch_config.n_rnti = rnti
         if slot_num is not None:
@@ -170,7 +170,7 @@ class MySimulator(Block):
             pusch_config.phy_cell_id = pci
         if rb_start is not None:
             pusch_config.first_resource_block = rb_start
-        toc("update new pusch config")
+        # toc("update new pusch config")
         
         if verbose == True:
             tf.print("\nUpdating parameters:")
@@ -180,19 +180,19 @@ class MySimulator(Block):
             tf.print(f" - RB start: {cur_rb_start} -> {pusch_config.first_resource_block}")
         
         if rnti or pci:
-            tic()
+            # tic()
             c_init = pusch_config._scb_c_init
-            toc("calculate c_init")
-            tic()
+            # toc("calculate c_init")
+            # tic()
             self.tbEnc.scrambler.c_init = c_init
-            toc("update c_init")
+            # toc("update c_init")
         if slot_num or rb_start or pci:
-            tic()
+            # tic()
             seq = pusch_config._pilot_sequence
-            toc("calculate pilot seq")
-            tic()
+            # toc("calculate pilot seq")
+            # tic()
             self._pilot_pattern.pilots = seq
-            toc("update pilot_sequence")
+            # toc("update pilot_sequence")
 
     @property
     def channel(self):

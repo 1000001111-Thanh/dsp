@@ -165,10 +165,22 @@ class MyPUSCHConfig(PUSCHConfig):
                 l = l_bar + l_prime
                 c_init = self.c_init(l)
                 # Generate RNG
-                c = generate_prng_seq(first_subcarrier + num_subcarriers, c_init=c_init)
+
+                # if self.dmrs.config_type==1:
+                #     _skip = first_subcarrier
+                #     _len = num_subcarriers
+                # else:
+                #     _skip = 2*first_subcarrier//3
+                #     _len = 2*num_subcarriers//3
+                
+                # c = generate_prng_seq(_skip + _len, c_init=c_init)
+                # c = c[_skip:]
+                
                 if self.dmrs.config_type==1:
-                    c = c[2*first_subcarrier//2:]
+                    c = generate_prng_seq(first_subcarrier + num_subcarriers, c_init=c_init)
+                    c = c[first_subcarrier:]
                 else:
+                    c = generate_prng_seq(2*first_subcarrier//3 + 2*num_subcarriers//3, c_init=c_init)
                     c = c[2*first_subcarrier//3:]
 
                 # Map to QAM
